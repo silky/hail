@@ -69,6 +69,7 @@ in
 
                 [Service]
                 Environment="PATH=${nix}/bin"
+                Environment="HOME=/var/lib/empty"
                 ExecStart=@${hail-bin} hail --profile hail-profiles/${profile} --job-uri ${uri}
               '';
           # TODO This could be more atomic (by analogy to NixOS's /etc/static)
