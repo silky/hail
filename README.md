@@ -34,7 +34,7 @@ Step-by-step
 Bootstrapping
 --------------
 
-If there are multiple services each managed independently with `hail`, you probably want to have those `hail` instances themselves managed by a manager `hail` instance. See `hail-systemd-bootstrap.nix` for a way to achieve this on systemd-based systems.
+If there are multiple services each managed independently with `hail`, you probably want to have those `hail` instances themselves managed by a manager `hail` instance. See [hail-systemd-bootstrap.nix](./hail-systemd-bootstrap.nix) for a way to achieve this on systemd-based systems.
 
 Future work
 ------------
