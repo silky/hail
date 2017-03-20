@@ -75,9 +75,12 @@ in
           install-unit-snippet = profile: uri:
             let unit-nm = "hail-${profile}.service";
             in ''
+                 if [ -f "$unitDir/${unit-nm}" ]; then
+                   unitsToStop+=("${unit-nm}")
+                 fi
                  ln -sf "${mk-unit profile uri}/${unit-nm}" \
                    "$unitDir/${unit-nm}"
-                 unitsToRestart+=("${unit-nm}")
+                 unitsToStart+=("${unit-nm}")
                  ${lib.optionalString (target != null)
                      ''
                        ln -sf "../${unit-nm}" \
@@ -97,15 +100,17 @@ in
            ${lib.optionalString (target != null)
                "mkdir -p \"$unitDir\"/${target}.target.wants"
             }
-           declare -a unitsToRestart
+           declare -a unitsToStop unitsToStart
 
            echo "Installing hail service units" >&2
            ${lib.concatStringsSep "\n\n"
                (lib.mapAttrsToList install-unit-snippet services)
             }
 
-           echo "Stopping old hail services" >&2
-           systemctl stop "''${unitsToRestart[@]}"
+           if [ ''${#unitsToStop[@]} -ne 0 ]; then
+             echo "Stopping old hail services" >&2
+             systemctl stop "''${unitsToStop[@]}"
+           fi
            echo "Starting hail services" >&2
            systemctl start "''${unitsToRestart[@]}"
          ''
