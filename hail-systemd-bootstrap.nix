@@ -89,30 +89,36 @@ in
                      ''
                   }
             '';
+          real-activate = writeScriptBin "activate"
+            ''
+              #!${bash}/bin/bash -e
+              export PATH=${coreutils}/bin:${systemd}/bin:$PATH
+              unitDir=/etc/systemd/system
+              if [ ! -w "$unitDir" ]; then
+                unitDir=/etc/systemd-mutable/system
+                mkdir -p "$unitDir"
+              fi
+              ${lib.optionalString (target != null)
+                  "mkdir -p \"$unitDir\"/${target}.target.wants"
+               }
+              declare -a unitsToStop unitsToStart
+
+              echo "Installing hail service units" >&2
+              ${lib.concatStringsSep "\n\n"
+                  (lib.mapAttrsToList install-unit-snippet services)
+               }
+
+              if [ ''${#unitsToStop[@]} -ne 0 ]; then
+                echo "Stopping old hail services" >&2
+                systemctl stop "''${unitsToStop[@]}"
+              fi
+              systemctl daemon-reload
+              echo "Starting hail services" >&2
+              systemctl start "''${unitsToStart[@]}"
+            '';
+
        in writeScriptBin "activate"
          ''
            #!${bash}/bin/bash -e
-           export PATH=${coreutils}/bin:${systemd}/bin:$PATH
-           unitDir=/etc/systemd/system
-           if [ ! -w "$unitDir" ]; then
-             unitDir=/etc/systemd-mutable/system
-             mkdir -p "$unitDir"
-           fi
-           ${lib.optionalString (target != null)
-               "mkdir -p \"$unitDir\"/${target}.target.wants"
-            }
-           declare -a unitsToStop unitsToStart
-
-           echo "Installing hail service units" >&2
-           ${lib.concatStringsSep "\n\n"
-               (lib.mapAttrsToList install-unit-snippet services)
-            }
-
-           if [ ''${#unitsToStop[@]} -ne 0 ]; then
-             echo "Stopping old hail services" >&2
-             systemctl stop "''${unitsToStop[@]}"
-           fi
-           systemctl daemon-reload
-           echo "Starting hail services" >&2
-           systemctl start "''${unitsToStart[@]}"
+           exec -a systemd-run ${systemd}/bin/systemd-run --description="Update hail services" ${real-activate}/bin/activate
          ''
