@@ -111,6 +111,7 @@ in
              echo "Stopping old hail services" >&2
              systemctl stop "''${unitsToStop[@]}"
            fi
+           systemctl daemon-reload
            echo "Starting hail services" >&2
            systemctl start "''${unitsToStart[@]}"
          ''
