@@ -4,6 +4,7 @@ module Hail.Netrc (loadCredsFromNetrc) where
 import Control.Monad (join)
 import Data.Foldable (find)
 import Data.Maybe (fromMaybe)
+import System.IO.Error (tryIOError)
 
 import Network.NetRc
 import Network.URI
@@ -24,9 +25,9 @@ loadCredsFromNetrc
   -> String         -- ^ The URI to look up.
   -> IO (Maybe Auth)
 loadCredsFromNetrc m_file uri =
-    loadCredsFromFile file uri <&> \case
-      Left _ -> Nothing
-      Right m_auth -> m_auth
+    (tryIOError $ loadCredsFromFile file uri) <&> \case
+      Right (Right m_auth) -> m_auth
+      _ -> Nothing
   where
     file = fromMaybe "/etc/netrc" m_file
 
