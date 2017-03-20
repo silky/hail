@@ -77,7 +77,11 @@ in
             let unit-nm = "hail-${profile}.service";
             in ''
                  if [ -f "$unitDir/${unit-nm}" ]; then
-                   unitsToStop+=("${unit-nm}")
+                   old=$(readlink -f $unitDir/${unit-nm})
+                   new=$(readlink -f ${mk-unit profile uri}/${unit-nm})
+                   if [ "$old" != "$new" ]; then
+                     unitsToStop+=("${unit-nm}")
+                   fi
                  fi
                  ln -sf "${mk-unit profile uri}/${unit-nm}" \
                    "$unitDir/${unit-nm}"
