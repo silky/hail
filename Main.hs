@@ -25,6 +25,7 @@ data Opts = Opts
   , jobURI :: String -- ^ The job to poll.
   , netrcFile :: Maybe FilePath -- ^ The netrc file for hydra access.
   , pollPeriod :: Int -- ^ The period to poll the job, in minutes.
+  , oneshot :: Bool -- ^ Whether to update once or in a loop
   }
 
 -- | Parser for command line options
@@ -48,6 +49,10 @@ optsParser = Opts
              <> help "The period with which to poll, in minutes"
              <> value 5
              <> showDefault)
+          <*> switch
+              ( long "oneshot"
+             <> help "Just update once, rather than in a loop"
+              )
 
 -- | Full command line parser with usage string.
 optsParserInfo :: ParserInfo Opts
@@ -62,20 +67,23 @@ main = do
   let profilePath = "/nix/var/nix/profiles" </> (profile opts)
       uri = jobURI opts
       microPeriod = minutesToMicroseconds $ pollPeriod opts
+      go = case oneshot opts of
+        True -> checkOnce
+        False -> pollLoop
   m_creds <- loadCredsFromNetrc (netrcFile opts) uri
   createDirectoryIfMissing True $ takeDirectory profilePath
   -- Try to activate on initial startup, but ignore failures.
   activate profilePath ActivateIgnoreErrors
-  pollLoop profilePath uri m_creds microPeriod
+  go profilePath uri m_creds microPeriod
 
 -- | Convert minutes to microseconds
 minutesToMicroseconds :: Int -> Int
 minutesToMicroseconds = (*) $ 60 * 100000
 
--- | Loop forever polling hydra for new builds.
-pollLoop :: FilePath -> String -> Maybe Auth -> Int -> IO ()
-pollLoop profilePath uri m_creds period =
-  forever $ getLatest uri m_creds >>= \case
+-- | Check hydra for new builds.
+checkOnce :: FilePath -> String -> Maybe Auth -> Int -> IO ()
+checkOnce profilePath uri m_creds period =
+  getLatest uri m_creds >>= \case
     Left msg -> do
       hPutStrLn stderr msg
       threadDelay period
@@ -87,3 +95,7 @@ pollLoop profilePath uri m_creds period =
           when switchSucceeded $
             activate profilePath ActivateReportErrors
         False -> threadDelay period
+
+-- | Poll hydra for new builds, forever
+pollLoop :: FilePath -> String -> Maybe Auth -> Int -> IO ()
+pollLoop profilePath uri m_creds = forever . checkOnce profilePath uri m_creds

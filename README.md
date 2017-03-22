@@ -12,6 +12,7 @@ Optional flags:
   * `--netrc-file NETRC_FILE` The path to a [netrc](https://linux.die.net/man/5/netrc) file specifying credentials for the hydra HTTP access.
     Defaults to `/etc/netrc` if it exists.
   * `--poll-period PERIOD` The period with which to poll the job, in minutes (default: 5)
+  * `--oneshot` Just update once, rather than in a loop.
 
 `hail` assumes that the `nix` available in its `PATH` is set up to pull from its hydra's binary cache.
 
