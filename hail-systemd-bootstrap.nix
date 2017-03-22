@@ -35,6 +35,7 @@ in
   , bash ? pkgs.bash
   , coreutils ? pkgs.coreutils
   , systemd ? pkgs.systemd
+  , runCommand ? pkgs.runCommand
   , lib ? pkgs.lib
   }:
     { services              # : AttrSet String URI
@@ -120,9 +121,13 @@ in
               echo "Starting hail services" >&2
               systemctl start "''${unitsToStart[@]}"
             '';
-
-       in writeScriptBin "activate"
-         ''
-           #!${bash}/bin/bash -e
-           exec -a systemd-run ${systemd}/bin/systemd-run --description="Update hail services" ${real-activate}/bin/activate
-         ''
+          activate = writeScriptBin "activate"
+            ''
+              #!${bash}/bin/bash -e
+              exec -a systemd-run ${systemd}/bin/systemd-run --description="Update hail services" ${real-activate}/bin/activate
+            '';
+      in runCommand "hail-profile" {} ''
+        mkdir -p $out/bin
+        ln -sv ${activate}/bin/activate $out/bin
+        ln -sv ${hail-bin} $out/bin/hail
+      ''
