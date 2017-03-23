@@ -36,17 +36,25 @@ in
   , coreutils ? pkgs.coreutils
   , systemd ? pkgs.systemd
   , runCommand ? pkgs.runCommand
+  , setupSystemdUnits ? pkgs.setupSystemdUnits
   , lib ? pkgs.lib
   }:
-    { services              # : AttrSet String URI
-                            # ^ A set whose names are profile names
-                            # and values are hydra job URIs
-    , target ? "multi-user" # : String
-                            # ^ The systemd target that the hail
-                            # services should be Wanted-By, or null
-                            # for none.
-                            #
-                            # Should this default to 'basic' instead?
+    { services                             # : AttrSet String URI
+                                           # ^ A set whose names are
+                                           # profile names and values
+                                           # are hydra job URIs
+    , target ? "multi-user"                # : String
+                                           # ^ The systemd target that
+                                           # the hail services should
+                                           # be Wanted-By, or null for
+                                           # none.
+    , namespace ? "hail-systemd-bootstrap" # : String
+                                           # ^ The namespace the
+                                           # services managed by hail
+                                           # should live in. See the
+                                           # analogous argument to
+                                           # setupSystemdUnits in
+                                           # nixpkgs.
     }:
       let # Haaaaacky
           this-hail-bin =
@@ -73,58 +81,27 @@ in
                 Environment="HOME=/var/lib/empty"
                 ExecStart=@${hail-bin} hail --profile hail-profiles/${profile} --job-uri ${uri}
               '';
-          # TODO This could be more atomic (by analogy to NixOS's /etc/static)
-          install-unit-snippet = profile: uri:
-            let unit-nm = "hail-${profile}.service";
-            in ''
-                 if [ -f "$unitDir/${unit-nm}" ]; then
-                   old=$(readlink -f $unitDir/${unit-nm})
-                   new=$(readlink -f ${mk-unit profile uri}/${unit-nm})
-                   if [ "$old" != "$new" ]; then
-                     unitsToStop+=("${unit-nm}")
-                   fi
-                 fi
-                 ln -sf "${mk-unit profile uri}/${unit-nm}" \
-                   "$unitDir/${unit-nm}"
-                 unitsToStart+=("${unit-nm}")
-                 ${lib.optionalString (target != null)
-                     ''
-                       ln -sf "../${unit-nm}" \
-                         "$unitDir/${target}.target.wants/${unit-nm}"
-                     ''
-                  }
-            '';
-          real-activate = writeScriptBin "activate"
-            ''
-              #!${bash}/bin/bash -e
-              export PATH=${coreutils}/bin:${systemd}/bin:$PATH
-              unitDir=/etc/systemd/system
-              if [ ! -w "$unitDir" ]; then
-                unitDir=/etc/systemd-mutable/system
-                mkdir -p "$unitDir"
-              fi
-              ${lib.optionalString (target != null)
-                  "mkdir -p \"$unitDir\"/${target}.target.wants"
-               }
-              declare -a unitsToStop unitsToStart
-
-              echo "Installing hail service units" >&2
-              ${lib.concatStringsSep "\n\n"
-                  (lib.mapAttrsToList install-unit-snippet services)
-               }
-
-              if [ ''${#unitsToStop[@]} -ne 0 ]; then
-                echo "Stopping old hail services" >&2
-                systemctl stop "''${unitsToStop[@]}"
-              fi
-              systemctl daemon-reload
-              echo "Starting hail services" >&2
-              systemctl start "''${unitsToStart[@]}"
-            '';
+          setup-systemd-units = setupSystemdUnits
+            { units = lib.mapAttrs' (profile: uri:
+                rec { name = "hail-${profile}.service";
+                      value =
+                        { path = "${mk-unit profile uri}/${name}";
+                          wanted-by = if target == null
+                                        then []
+                                        else [ "${target}.target" ];
+                        };
+                    }
+              ) services;
+              inherit namespace;
+            };
           activate = writeScriptBin "activate"
             ''
               #!${bash}/bin/bash -e
-              exec -a systemd-run ${systemd}/bin/systemd-run --description="Update hail services" ${real-activate}/bin/activate
+              # We use systemd-run because the program calling this
+              # script may be one of the services being updated.
+              exec -a systemd-run ${systemd}/bin/systemd-run \
+                --description="Update hail services" \
+                ${setup-systemd-units}/bin/setup-systemd-units
             '';
       in runCommand "hail-profile" {} ''
         mkdir -p $out/bin
