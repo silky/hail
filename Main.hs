@@ -78,7 +78,7 @@ main = do
 
 -- | Convert minutes to microseconds
 minutesToMicroseconds :: Int -> Int
-minutesToMicroseconds = (*) $ 60 * 100000
+minutesToMicroseconds = (*) $ 60 * 1000000
 
 -- | Check hydra for new builds.
 checkOnce :: FilePath -> String -> Maybe Auth -> Int -> IO ()
