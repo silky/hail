@@ -39,10 +39,17 @@ in
   , setupSystemdUnits ? pkgs.setupSystemdUnits
   , lib ? pkgs.lib
   }:
-    { services                             # : AttrSet String URI
+    { services                             # : AttrSet String (Either URI { job-uri     : URI
+                                           #                              , netrc-file  : Optional Path
+                                           #                              , poll-period : Optional Int
+                                           #                              })
                                            # ^ A set whose names are
                                            # profile names and values
-                                           # are hydra job URIs
+                                           # are either a set of hail
+                                           # options (see README.md
+                                           # for semantics and
+                                           # defaults) or hydra job
+                                           # URIs
     , target ? "multi-user"                # : String
                                            # ^ The systemd target that
                                            # the hail services should
@@ -69,23 +76,31 @@ in
           hail-bin = if hail == null
                        then this-hail-bin
                        else "${hail}/bin/hail";
-          mk-unit = profile: uri:
-            writeTextDir "hail-${profile}.service"
-              ''
-                [Unit]
-                Description=Hail continuous self-deployment service for ${profile}
-                Wants=network-online.target
+          mk-unit = profile: opts:
+            let uri = if builtins.isAttrs opts
+                        then opts.job-uri
+                        else opts;
+                netrc-string = lib.optionalString (opts ? netrc-file)
+                                 " --netrc-file ${opts.netrc-file}";
+                period-string = lib.optionalString (opts ? poll-period)
+                                  " --poll-period ${toString opts.poll-period}";
+            in
+              writeTextDir "hail-${profile}.service"
+                ''
+                  [Unit]
+                  Description=Hail continuous self-deployment service for ${profile}
+                  Wants=network-online.target
 
-                [Service]
-                Environment="PATH=${nix}/bin"
-                Environment="HOME=/var/lib/empty"
-                ExecStart=@${hail-bin} hail --profile hail-profiles/${profile} --job-uri ${uri}
-              '';
+                  [Service]
+                  Environment="PATH=${nix}/bin"
+                  Environment="HOME=/var/lib/empty"
+                  ExecStart=@${hail-bin} hail --profile hail-profiles/${profile} --job-uri ${uri}${netrc-string}${period-string}
+                '';
           setup-systemd-units = setupSystemdUnits
-            { units = lib.mapAttrs' (profile: uri:
+            { units = lib.mapAttrs' (profile: opts:
                 rec { name = "hail-${profile}.service";
                       value =
-                        { path = "${mk-unit profile uri}/${name}";
+                        { path = "${mk-unit profile opts}/${name}";
                           wanted-by = if target == null
                                         then []
                                         else [ "${target}.target" ];
