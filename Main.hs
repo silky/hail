@@ -1,7 +1,7 @@
 {-# LANGUAGE LambdaCase #-}
 module Main where
 
-import Control.Monad (when, forever)
+import Control.Monad (when)
 import Control.Applicative ((<*>))
 import Control.Concurrent (threadDelay)
 import Data.Semigroup ((<>))
@@ -21,16 +21,34 @@ import Hail.Hydra
 
 -- | Command line options
 data Opts = Opts
-  { profile :: String -- ^ The profile to install the service into.
-  , jobURI :: String -- ^ The job to poll.
+  { profile :: String           -- ^ The profile to install the
+                                -- service into.
+  , jobURI :: String            -- ^ The job to poll.
   , netrcFile :: Maybe FilePath -- ^ The netrc file for hydra access.
-  , pollPeriod :: Int -- ^ The period to poll the job, in minutes.
-  , oneshot :: Bool -- ^ Whether to update once or in a loop
+  , pollPeriod :: Maybe Int     -- ^ The period to poll the job, in
+                                -- minutes, or 'Nothing' for a oneshot.
   }
+
+-- | Parser for the poll period command line flag
+pollPeriodParser :: Parser (Maybe Int)
+pollPeriodParser =  Just
+                <$> option auto
+                  ( long "poll-period"
+                 <> metavar "PERIOD"
+                 <> help "The period with which to poll, in minutes"
+                 <> value 5
+                 <> showDefault)
+
+-- | Parser for the oneshot command line flag
+oneshotParser :: Parser (Maybe Int)
+oneshotParser = flag' Nothing
+                 ( long "oneshot"
+                <> help "Just update once, rather than in a loop"
+                 )
 
 -- | Parser for command line options
 optsParser :: Parser Opts
-optsParser = Opts
+optsParser =  Opts
           <$> strOption
               ( long "profile"
              <> metavar "PROFILE"
@@ -43,16 +61,7 @@ optsParser = Opts
               ( long "netrc-file"
              <> metavar "NETRC_FILE"
              <> help "The netrc file for hydra HTTP access"))
-          <*> option auto
-              ( long "poll-period"
-             <> metavar "PERIOD"
-             <> help "The period with which to poll, in minutes"
-             <> value 5
-             <> showDefault)
-          <*> switch
-              ( long "oneshot"
-             <> help "Just update once, rather than in a loop"
-              )
+          <*> (oneshotParser <|> pollPeriodParser)
 
 -- | Full command line parser with usage string.
 optsParserInfo :: ParserInfo Opts
@@ -66,27 +75,38 @@ main = do
   opts <- execParser optsParserInfo
   let profilePath = "/nix/var/nix/profiles" </> (profile opts)
       uri = jobURI opts
-      microPeriod = minutesToMicroseconds $ pollPeriod opts
-      go = case oneshot opts of
-        True -> checkOnce
-        False -> pollLoop
+      cont m_creds = case pollPeriod opts of
+        Nothing -> \_ -> return ()
+        Just period -> \delay -> do
+          case delay of
+            Delay -> threadDelay $ minutesToMicroseconds period
+            NoDelay -> return ()
+          pollLoop profilePath uri m_creds (cont m_creds)
   m_creds <- loadCredsFromNetrc (netrcFile opts) uri
   createDirectoryIfMissing True $ takeDirectory profilePath
   -- Try to activate on initial startup, but ignore failures.
   activate profilePath ActivateIgnoreErrors
-  go profilePath uri m_creds microPeriod
+  cont m_creds NoDelay
 
 -- | Convert minutes to microseconds
 minutesToMicroseconds :: Int -> Int
 minutesToMicroseconds = (*) $ 60 * 1000000
 
--- | Check hydra for new builds.
-checkOnce :: FilePath -> String -> Maybe Auth -> Int -> IO ()
-checkOnce profilePath uri m_creds period =
+-- | Whether the looping continuation should delay before
+-- the next iteration of the loop.
+data ShouldDelay = Delay | NoDelay
+
+-- | Poll hydra for new builds, with an explicit continuation
+pollLoop :: FilePath               -- ^ The profile path
+         -> String                 -- ^ The job URI
+         -> Maybe Auth             -- ^ The creds for talking to hydra
+         -> (ShouldDelay -> IO ()) -- ^ The continuation
+         -> IO ()
+pollLoop profilePath uri m_creds cont =
   getLatest uri m_creds >>= \case
     Left msg -> do
       hPutStrLn stderr msg
-      threadDelay period
+      cont Delay
     Right outPath -> do
       prevOutPath <- canonicalizePath profilePath
       case prevOutPath /= outPath of
@@ -94,8 +114,5 @@ checkOnce profilePath uri m_creds period =
           switchSucceeded <- switchProfile profilePath outPath
           when switchSucceeded $
             activate profilePath ActivateReportErrors
-        False -> threadDelay period
-
--- | Poll hydra for new builds, forever
-pollLoop :: FilePath -> String -> Maybe Auth -> Int -> IO ()
-pollLoop profilePath uri m_creds = forever . checkOnce profilePath uri m_creds
+          cont NoDelay
+        False -> cont Delay
