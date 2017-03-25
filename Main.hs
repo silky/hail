@@ -76,7 +76,7 @@ main = do
   let profilePath = "/nix/var/nix/profiles" </> (profile opts)
       uri = jobURI opts
       cont m_creds = case pollPeriod opts of
-        Nothing -> \_ -> return ()
+        Nothing -> const $ return ()
         Just period -> \delay -> do
           case delay of
             Delay -> threadDelay $ minutesToMicroseconds period
