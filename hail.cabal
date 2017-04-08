@@ -9,7 +9,7 @@ description:
 
             See the README for more details.
 homepage:            https://github.com/TaktInc/hail
-license:             BSD3
+license:             Apache-2.0
 license-file:        LICENSE
 author:              Shea Levy
 maintainer:          shea.levy@takt.com
