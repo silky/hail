@@ -1,5 +1,5 @@
 name:                hail
-version:             0.1.0.0
+version:             0.1.0.1
 synopsis:
          A service for pull-based continuous deployment based on hydra.
 description:
@@ -16,7 +16,7 @@ maintainer:          shea.levy@takt.com
 copyright:           (c) 2017, Takt Inc.
 category:            System
 build-type:          Simple
-extra-source-files:  ChangeLog.md
+extra-source-files:  ChangeLog.md, README.md
 cabal-version:       >=1.10
 data-files:          hail-systemd-bootstrap.nix
 
